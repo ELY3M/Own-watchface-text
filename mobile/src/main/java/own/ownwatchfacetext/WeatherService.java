@@ -91,8 +91,8 @@ public class WeatherService  extends Service implements ConnectionCallbacks, OnC
 
 
 	//int interval = 30000;
-	int interval = 90000;
-	//int interval = 1800000;
+	//int interval = 90000;
+	int interval = 1800000;
 	private Context context;
 
 
