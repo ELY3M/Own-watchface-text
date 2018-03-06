@@ -1,6 +1,3 @@
-/*
- */
-
 package own.ownwatchfacetext;
 
 import android.content.BroadcastReceiver;
@@ -18,55 +15,45 @@ import android.graphics.Rect;
 import android.graphics.Typeface;
 import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.Drawable;
+import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Message;
 import android.support.wearable.watchface.CanvasWatchFaceService;
+import android.support.wearable.watchface.WatchFaceService;
 import android.support.wearable.watchface.WatchFaceStyle;
+import android.text.TextUtils;
 import android.text.format.DateFormat;
+import android.text.format.DateUtils;
+import android.text.format.Time;
 import android.util.Log;
 import android.view.Gravity;
 import android.view.SurfaceHolder;
-import android.widget.Toast;
 
 import com.google.android.gms.common.ConnectionResult;
 import com.google.android.gms.common.api.GoogleApiClient;
+import com.google.android.gms.common.api.ResultCallback;
 import com.google.android.gms.wearable.DataApi;
 import com.google.android.gms.wearable.DataEvent;
 import com.google.android.gms.wearable.DataEventBuffer;
-import com.google.android.gms.wearable.DataItem;
 import com.google.android.gms.wearable.DataMap;
 import com.google.android.gms.wearable.DataMapItem;
+import com.google.android.gms.wearable.MessageApi;
+import com.google.android.gms.wearable.Node;
+import com.google.android.gms.wearable.NodeApi;
 import com.google.android.gms.wearable.Wearable;
-
 
 import java.text.SimpleDateFormat;
 import java.util.Calendar;
 import java.util.Date;
+import java.util.Set;
 import java.util.SimpleTimeZone;
 import java.util.TimeZone;
-import java.util.concurrent.TimeUnit;
 
-/**
- * Digital watch face with seconds. In ambient mode, the seconds aren't displayed. On devices with
- * low-bit ambient mode, the text is drawn without anti-aliasing in ambient mode.
- */
+
 public class WatchFace extends CanvasWatchFaceService  {
 
-    private static final String TAG = "watchface";
-
-
-
-    /**
-     * Update rate in milliseconds for interactive mode. We update once a second since seconds are
-     * displayed in interactive mode.
-     */
-    private static final long INTERACTIVE_UPDATE_RATE_MS = TimeUnit.SECONDS.toMillis(1);
-
-    /**
-     * Handler message id for updating the time periodically in interactive mode.
-     */
-    private static final int MSG_UPDATE_TIME = 0;
+    private static final String TAG = "ownwatchface";
 
     @Override
     public Engine onCreateEngine() {
@@ -74,26 +61,38 @@ public class WatchFace extends CanvasWatchFaceService  {
     }
 
 
-    private class Engine extends CanvasWatchFaceService.Engine implements DataApi.DataListener,
-            GoogleApiClient.ConnectionCallbacks, GoogleApiClient.OnConnectionFailedListener {
-        static final int MSG_UPDATE_TIME = 0;
+    private class Engine extends CanvasWatchFaceService.Engine implements GoogleApiClient.ConnectionCallbacks, GoogleApiClient.OnConnectionFailedListener, DataApi.DataListener, NodeApi.NodeListener {
 
-        // How often mUpdateTimeHandler ticks in milliseconds.
-        long mInteractiveUpdateRateMs = NORMAL_UPDATE_RATE_MS;
 
-        // Handler to update the time periodically in interactive mode.
-        final Handler mUpdateTimeHandler = new Handler() {
+
+        protected static final int MSG_UPDATE_TIME = 0;
+        protected long UPDATE_RATE_MS = 500;
+        protected static final long WEATHER_INFO_TIME_OUT = DateUtils.HOUR_IN_MILLIS * 6;
+
+        final BroadcastReceiver TimeZoneReceiver = new BroadcastReceiver() {
+            @Override
+            public void onReceive(Context context, Intent intent) {
+                mCalendar.setTimeZone(TimeZone.getDefault());
+                invalidate();
+            }
+        };
+
+
+        /**
+         * Handler to update the time periodically in interactive mode.
+         */
+        protected final Handler mUpdateTimeHandler = new Handler() {
             @Override
             public void handleMessage(Message message) {
                 switch (message.what) {
                     case MSG_UPDATE_TIME:
-                        //Log.v(TAG, "updating time");
                         invalidate();
-                        if (shouldTimerBeRunning()) {
+
+                        if (shouldUpdateTimerBeRunning()) {
                             long timeMs = System.currentTimeMillis();
-                            long delayMs =
-                                    mInteractiveUpdateRateMs - (timeMs % mInteractiveUpdateRateMs);
+                            long delayMs = UPDATE_RATE_MS - (timeMs % UPDATE_RATE_MS);
                             mUpdateTimeHandler.sendEmptyMessageDelayed(MSG_UPDATE_TIME, delayMs);
+                            requireWeatherInfo();
                         }
                         break;
                 }
@@ -102,13 +101,86 @@ public class WatchFace extends CanvasWatchFaceService  {
 
 
 
-        GoogleApiClient mGoogleApiClient = new GoogleApiClient.Builder(WatchFace.this)
-                .addConnectionCallbacks(this)
-                .addOnConnectionFailedListener(this)
-                .addApi(Wearable.API)
-                .build();
-
         Resources resources = WatchFace.this.getResources();
+
+        Paint mBackgroundPaint;
+        Bitmap mBackgroundBitmap = BitmapFactory.decodeResource(resources, R.drawable.back);
+        Bitmap mBackgroundScaledBitmap;
+
+        float mXOffset;
+        float mYOffset;
+        float mPadding;
+
+        SimpleDateFormat timeSdf;
+        SimpleDateFormat timenosecsSdf;
+        SimpleDateFormat periodSdf;
+        SimpleDateFormat dateStampSdf;
+        SimpleDateFormat timeStampSdf;
+
+
+        Paint mClockPaint;
+        Paint mClocknosecsPaint;
+        Paint mPeriodPaint;
+        Paint mDatestampPaint;
+        Paint mTimestampPaint;
+        Paint mTempPaint;
+        Paint mWeatherPaint;
+
+        int mInteractiveTextColor = getResources().getColor(R.color.aqua);
+        int mAmbientTextColor = getResources().getColor(R.color.aqua);
+        int mBackgroundColor = getResources().getColor(R.color.black);
+
+
+        boolean mLowBitAmbient;
+        boolean mRegisteredService = false;
+
+        int mRequireInterval;
+
+
+        String lat = "0.0";
+        String lon = "0.0";
+        String temp = "103";
+        String icon = "unknown";
+        String finalicon;
+        String weather = "unknown";
+        String TempString = temp;
+        String WeatherString = weather;
+
+        //settings to be global//
+        public int clockSize = 26;
+        public int clocknosecsSize = 43;
+        public int markerSize = 18;
+        public int dateSize = 18;
+        public int timeSize = 18;
+        public int tempSize = 30;
+        public int weatherSize = 13;
+
+        public boolean clockAct = true;
+        public boolean clockDim = false;
+        public boolean clocknosecsAct = false;
+        public boolean clocknosecsDim = true;
+        public boolean markerDim = true;
+        public boolean dateDim = true;
+        public boolean timeDim = false;
+        public boolean tempDim = false;
+        public boolean weatherDim = false;
+        public boolean alwaysUtc = true;
+        public boolean showtime = false;
+        public boolean northernhemi = true;
+
+
+        boolean mTimeZoneReceiver = false;
+        Date mDate;
+
+        Rect cardPeekRectangle = new Rect(0, 0, 0, 0);
+
+
+
+        protected long mWeatherInfoReceivedTime;
+        protected long mWeatherInfoRequiredTime;
+        private String mName;
+
+
 
         Typeface BOLD_TYPEFACE =
                 Typeface.createFromAsset(resources.getAssets(), "fonts/DS-DIGIB.TTF");
@@ -122,6 +194,7 @@ public class WatchFace extends CanvasWatchFaceService  {
         Typeface PIXELLCD =
                 Typeface.createFromAsset(resources.getAssets(), "fonts/PixelLCD-7.ttf");
 
+        Calendar mCalendar;
         private static final String TIME_FORMAT_12_NOSECS = "h:mm";
         private static final String TIME_FORMAT_12 = "h:mm:ss";
         private static final String TIME_FORMAT_24_NOSECS = "H:mm";
@@ -135,83 +208,66 @@ public class WatchFace extends CanvasWatchFaceService  {
         private Calendar moonCalendar;
 
 
-        String lat;
-        String lon;
-        String temp = "103°F";
-        String icon = "skc";
-        String weather = "skc";
-        String TempString = temp;
-        String WeatherString = weather;
 
 
-        // Update rate in milliseconds for normal (not ambient) mode.
-        private static final long NORMAL_UPDATE_RATE_MS = 500;
+
+        GoogleApiClient mGoogleApiClient = new GoogleApiClient.Builder(WatchFace.this)
+                .addConnectionCallbacks(this)
+                .addOnConnectionFailedListener(this)
+                .addApi(Wearable.API)
+                .build();
 
 
-        //settings
-        boolean clockAct;
-        boolean clockDim;
-        boolean clocknosecsAct;
-        boolean clocknosecsDim;
-        boolean periodDim;
-        boolean dateDim;
-        boolean timeDim;
-        boolean tempDim;
-        boolean weatherDim;
-        boolean alwaysUtc;
-        boolean showtime;
-        boolean northernhemi;
+        @Override
+        public void onConnected(Bundle bundle) {
+            Log.d(TAG, " Connected: " + bundle);
+            getConfig();
+            Wearable.NodeApi.addListener(mGoogleApiClient, this);
+            Wearable.DataApi.addListener(mGoogleApiClient, this);
+            requireWeatherInfo();
+        }
 
-        boolean mIsLowBitAmbient;
-        boolean mIsMute;
+        @Override
+        public void onConnectionSuspended(int i) {
+            Log.d(TAG, " ConnectionSuspended: " + i);
+        }
 
-        boolean mRegisteredTimeZoneReceiver = false;
-        Date mDate;
+        @Override
+        public void onDataChanged(DataEventBuffer dataEvents) {
+            for (int i = 0; i < dataEvents.getCount(); i++) {
+                DataEvent event = dataEvents.get(i);
+                DataMap dataMap = DataMap.fromByteArray(event.getDataItem().getData());
+                Log.d(TAG, " onDataChanged: " + dataMap);
 
-        Rect cardPeekRectangle = new Rect(0, 0, 0, 0);
-
-        WatchFaceStyle shortCards;
-        WatchFaceStyle variableCards;
-
-        SimpleDateFormat timeSdf;
-        SimpleDateFormat timenosecsSdf;
-        SimpleDateFormat periodSdf;
-        SimpleDateFormat dateStampSdf;
-        SimpleDateFormat timeStampSdf;
-
-
-        Paint mClocknosecsPaint;
-        Paint mPeriodPaint;
-        Paint mDatestampPaint;
-        Paint mTimestampPaint;
-        Paint mTempPaint;
-        Paint mWeatherPaint;
-
-        int mInteractiveTextColor = getResources().getColor(R.color.aqua);
-        int mAmbientTextColor = getResources().getColor(R.color.aqua);
-        int mBackgroundColor = getResources().getColor(R.color.black);
-
-        float mXOffset;
-        float mYOffset;
-        float mPadding;
-
-
-        Paint mBackgroundPaint;
-        Bitmap mBackgroundBitmap = BitmapFactory.decodeResource(resources, R.drawable.back);
-        Bitmap mBackgroundScaledBitmap;
-
-        Paint mClockPaint;
-        boolean mAmbient;
-        Calendar mCalendar;
-        final BroadcastReceiver mTimeZoneReceiver = new BroadcastReceiver() {
-            @Override
-            public void onReceive(Context context, Intent intent) {
-                mCalendar.setTimeZone(TimeZone.getDefault());
-                invalidate();
+                fetchConfig(dataMap);
             }
-        };
+        }
 
+        @Override
+        public void onPeerConnected(Node node) {
+            Log.d(TAG, " PeerConnected: " + node);
+            requireWeatherInfo();
+        }
 
+        @Override
+        public void onPeerDisconnected(Node node) {
+            Log.d(TAG, " PeerDisconnected: " + node);
+        }
+
+        @Override
+        public void onConnectionFailed(ConnectionResult connectionResult) {
+            Log.d(TAG, " ConnectionFailed: " + connectionResult);
+
+        }
+
+        protected Paint createTextPaint(int color, Typeface typeface) {
+            Paint paint = new Paint();
+            paint.setColor(color);
+            if (typeface != null)
+                paint.setTypeface(typeface);
+            paint.setAntiAlias(true);
+            return paint;
+        }
 
         private void updateTimeZone(TimeZone tz) {
             timeSdf.setTimeZone(tz);
@@ -226,34 +282,23 @@ public class WatchFace extends CanvasWatchFaceService  {
             mDate.setTime(System.currentTimeMillis());
         }
 
-
         @Override
         public void onCreate(SurfaceHolder holder) {
-
-            Log.d(TAG, "onCreate");
             super.onCreate(holder);
+
             mCalendar = Calendar.getInstance();
 
-            //StrictMode.ThreadPolicy policy = new StrictMode.ThreadPolicy.Builder().permitAll().build();
-            //StrictMode.setThreadPolicy(policy);
-
-            // A style with variable height notification cards.  Note that setting the
-            // HotwordIndicatorGravity or StatusBarGravity to BOTTOM will force the notification
-            // cards to be short, regardless of the CardPeekMode.
-            variableCards = new WatchFaceStyle.Builder(WatchFace.this)
-                    .setAmbientPeekMode(WatchFaceStyle.AMBIENT_PEEK_MODE_VISIBLE)
+            setWatchFaceStyle(new WatchFaceStyle.Builder(WatchFace.this)
+                    .setCardPeekMode(WatchFaceStyle.PEEK_MODE_SHORT)
+                    .setAmbientPeekMode(WatchFaceStyle.AMBIENT_PEEK_MODE_HIDDEN)
                     .setBackgroundVisibility(WatchFaceStyle.BACKGROUND_VISIBILITY_INTERRUPTIVE)
-                    .setCardPeekMode(WatchFaceStyle.PEEK_MODE_VARIABLE)
-                    .setHotwordIndicatorGravity(Gravity.TOP | Gravity.LEFT)
-                    .setPeekOpacityMode(WatchFaceStyle.PEEK_OPACITY_MODE_TRANSLUCENT)
+                    .setHotwordIndicatorGravity(Gravity.BOTTOM | Gravity.RIGHT)
+                    .setStatusBarGravity(Gravity.BOTTOM | Gravity.LEFT)
                     .setShowSystemUiTime(false)
-                    .setShowUnreadCountIndicator(false)
-                    .setStatusBarGravity(Gravity.TOP | Gravity.LEFT)
-                    .setViewProtection(WatchFaceStyle.PROTECT_STATUS_BAR)
-                    .build();
+                    .build());
 
-            // A style with short height notification cards.
-            shortCards = new WatchFaceStyle.Builder(WatchFace.this)
+/* from my fav watch face
+            xxxxxxs = new WatchFaceStyle.Builder(WeatherWatchFaceService.this)
                     .setAmbientPeekMode(WatchFaceStyle.AMBIENT_PEEK_MODE_VISIBLE)
                     .setBackgroundVisibility(WatchFaceStyle.BACKGROUND_VISIBILITY_INTERRUPTIVE)
                     .setCardPeekMode(WatchFaceStyle.PEEK_MODE_SHORT)
@@ -264,17 +309,13 @@ public class WatchFace extends CanvasWatchFaceService  {
                     .setStatusBarGravity(Gravity.BOTTOM | Gravity.LEFT)
                     .setViewProtection(WatchFaceStyle.PROTECT_STATUS_BAR)
                     .build();
+*/
 
-            boolean useShortCards = WatchFaceUtil
-                    .getBoolean(getApplicationContext(), WatchFaceUtil.KEY_USE_SHORT_CARDS,
-                            WatchFaceUtil.KEY_USE_SHORT_CARDS_DEF);
-            if (useShortCards) {
-                Log.d(TAG, "Using short notification cards");
-                setWatchFaceStyle(shortCards);
-            } else {
-                Log.d(TAG, "Using variable notification cards");
-                setWatchFaceStyle(variableCards);
-            }
+            resources = WatchFace.this.getResources();
+
+            mBackgroundPaint = new Paint();
+            mBackgroundPaint.setColor(Color.BLACK);
+
 
             if (DateFormat.is24HourFormat(getApplicationContext())) {
                 timeSdf = new SimpleDateFormat(TIME_FORMAT_24);
@@ -299,25 +340,24 @@ public class WatchFace extends CanvasWatchFaceService  {
             mTempPaint = createTextPaint(mInteractiveTextColor, NORMAL_TYPEFACE);
             mWeatherPaint = createTextPaint(mInteractiveTextColor, NORMAL_TYPEFACE);
 
-
             // initial setup, load persisted or default values, can be overridden by companion app
             Context context = getApplicationContext();
-            float clockSize = WatchFaceUtil.getInt(context, WatchFaceUtil.KEY_CLOCK_SIZE, WatchFaceUtil.KEY_CLOCK_SIZE_DEF);
-            float clocknosecsSize = WatchFaceUtil.getInt(context, WatchFaceUtil.KEY_CLOCK_NOSECS_SIZE, WatchFaceUtil.KEY_CLOCK_NOSECS_SIZE_DEF);
-            float markerSize = WatchFaceUtil.getInt(context, WatchFaceUtil.KEY_MARKER_SIZE, WatchFaceUtil.KEY_MARKER_SIZE_DEF);
-            float datestampSize = WatchFaceUtil.getInt(context, WatchFaceUtil.KEY_DATE_SIZE, WatchFaceUtil.KEY_DATE_SIZE_DEF);
-            float timestampSize = WatchFaceUtil.getInt(context, WatchFaceUtil.KEY_TIME_SIZE, WatchFaceUtil.KEY_TIME_SIZE_DEF);
-            float tempSize = WatchFaceUtil.getInt(context, WatchFaceUtil.KEY_TEMP_SIZE, WatchFaceUtil.KEY_TEMP_SIZE_DEF);
-            float weatherSize = WatchFaceUtil.getInt(context, WatchFaceUtil.KEY_WEATHER_SIZE, WatchFaceUtil.KEY_WEATHER_SIZE_DEF);
+            clockSize = Settings.getInt(context, Settings.KEY_CLOCK_SIZE, clockSize);
+            clocknosecsSize = Settings.getInt(context, Settings.KEY_CLOCK_NOSECS_SIZE, clocknosecsSize);
+            markerSize = Settings.getInt(context, Settings.KEY_MARKER_SIZE, markerSize);
+            dateSize = Settings.getInt(context, Settings.KEY_DATE_SIZE, dateSize);
+            timeSize = Settings.getInt(context, Settings.KEY_TIME_SIZE, timeSize);
+            tempSize = Settings.getInt(context, Settings.KEY_TEMP_SIZE, tempSize);
+            weatherSize = Settings.getInt(context, Settings.KEY_WEATHER_SIZE, weatherSize);
 
             //get gps
-            lat = WatchFaceUtil.getString(context, WatchFaceUtil.KEY_LAT, WatchFaceUtil.KEY_LAT_DEF);
-            lon = WatchFaceUtil.getString(context, WatchFaceUtil.KEY_LON, WatchFaceUtil.KEY_LON_DEF);
+            lat = Settings.getString(context, Settings.KEY_LAT, lat);
+            lon = Settings.getString(context, Settings.KEY_LON, lon);
 
             //get weather
-            temp = WatchFaceUtil.getString(context, WatchFaceUtil.KEY_TEMP, WatchFaceUtil.KEY_TEMP_DEF);
-            icon = WatchFaceUtil.getString(context, WatchFaceUtil.KEY_ICON, WatchFaceUtil.KEY_ICON_DEF);
-            weather = WatchFaceUtil.getString(context, WatchFaceUtil.KEY_WEATHER, WatchFaceUtil.KEY_WEATHER_DEF);
+            temp = Settings.getString(context, Settings.KEY_TEMP, temp);
+            icon = Settings.getString(context, Settings.KEY_ICON, icon);
+            weather = Settings.getString(context, Settings.KEY_WEATHER, weather);
 
 
             Log.i(TAG, "oncreate firstget Weather: Temp: " + temp + " icon: " + icon + " Weather: " + weather + " EOF");
@@ -327,122 +367,39 @@ public class WatchFace extends CanvasWatchFaceService  {
             mClockPaint.setTextSize(clockSize * density);
             mClocknosecsPaint.setTextSize(clocknosecsSize * density);
             mPeriodPaint.setTextSize(markerSize * density);
-            mDatestampPaint.setTextSize(datestampSize * density);
-            mTimestampPaint.setTextSize(timestampSize * density);
+            mDatestampPaint.setTextSize(dateSize * density);
+            mTimestampPaint.setTextSize(timeSize * density);
             mTempPaint.setTextSize(tempSize * density);
             mWeatherPaint.setTextSize(weatherSize * density);
 
 
-            clockAct = WatchFaceUtil.getBoolean(context, WatchFaceUtil.KEY_CLOCK_ACT, WatchFaceUtil.KEY_CLOCK_ACT_DEF);
-            clockDim = WatchFaceUtil.getBoolean(context, WatchFaceUtil.KEY_CLOCK_DIM, WatchFaceUtil.KEY_CLOCK_DIM_DEF);
-            clocknosecsAct = WatchFaceUtil.getBoolean(context, WatchFaceUtil.KEY_CLOCK_NOSECS_ACT, WatchFaceUtil.KEY_CLOCK_NOSECS_ACT_DEF);
-            clocknosecsDim = WatchFaceUtil.getBoolean(context, WatchFaceUtil.KEY_CLOCK_NOSECS_DIM, WatchFaceUtil.KEY_CLOCK_NOSECS_DIM_DEF);
-            periodDim = WatchFaceUtil.getBoolean(context, WatchFaceUtil.KEY_MARKER_DIM, WatchFaceUtil.KEY_MARKER_DIM_DEF);
-            dateDim = WatchFaceUtil.getBoolean(context, WatchFaceUtil.KEY_DATE_DIM, WatchFaceUtil.KEY_DATE_DIM_DEF);
-            timeDim = WatchFaceUtil.getBoolean(context, WatchFaceUtil.KEY_TIME_DIM, WatchFaceUtil.KEY_TIME_DIM_DEF);
-            tempDim = WatchFaceUtil.getBoolean(context, WatchFaceUtil.KEY_TEMP_DIM, WatchFaceUtil.KEY_TEMP_DIM_DEF);
-            weatherDim = WatchFaceUtil.getBoolean(context, WatchFaceUtil.KEY_WEATHER_DIM, WatchFaceUtil.KEY_WEATHER_DIM_DEF);
-            alwaysUtc = WatchFaceUtil.getBoolean(context, WatchFaceUtil.KEY_ALWAYS_UTC, WatchFaceUtil.KEY_ALWAYS_UTC_DEF);
-            showtime = WatchFaceUtil.getBoolean(context, WatchFaceUtil.KEY_SHOW_TIME, WatchFaceUtil.KEY_SHOW_TIME_DEF);
-            northernhemi = WatchFaceUtil.getBoolean(context, WatchFaceUtil.KEY_NORTHERNHEMI, WatchFaceUtil.KEY_NORTHERNHEMI_DEF);
+            clockAct = Settings.getBoolean(context, Settings.KEY_CLOCK_ACT, clockAct);
+            clockDim = Settings.getBoolean(context, Settings.KEY_CLOCK_DIM, clockDim);
+            clocknosecsAct = Settings.getBoolean(context, Settings.KEY_CLOCK_NOSECS_ACT, clocknosecsAct);
+            clocknosecsDim = Settings.getBoolean(context, Settings.KEY_CLOCK_NOSECS_DIM, clocknosecsDim);
+            markerDim = Settings.getBoolean(context, Settings.KEY_MARKER_DIM, markerDim);
+            dateDim = Settings.getBoolean(context, Settings.KEY_DATE_DIM, dateDim);
+            timeDim = Settings.getBoolean(context, Settings.KEY_TIME_DIM, timeDim);
+            tempDim = Settings.getBoolean(context, Settings.KEY_TEMP_DIM, tempDim);
+            weatherDim = Settings.getBoolean(context, Settings.KEY_WEATHER_DIM, weatherDim);
+            alwaysUtc = Settings.getBoolean(context, Settings.KEY_ALWAYS_UTC, alwaysUtc);
+            showtime = Settings.getBoolean(context, Settings.KEY_SHOW_TIME, showtime);
+            northernhemi = Settings.getBoolean(context, Settings.KEY_NORTHERNHEMI, northernhemi);
+
+
 
             mDate = new Date();
 
-        }
-
-        @Override
-        public void onDestroy() {
-            mUpdateTimeHandler.removeMessages(MSG_UPDATE_TIME);
-            super.onDestroy();
-        }
+            //service timer!!!//
+            mRequireInterval = Settings.interval;
+            mWeatherInfoRequiredTime = System.currentTimeMillis() - (DateUtils.SECOND_IN_MILLIS * 58);
 
 
-        private Paint createTextPaint(int Color, Typeface typeface) {
-            Paint paint = new Paint();
-            paint.setColor(Color);
-            paint.setTypeface(typeface);
-            paint.setAntiAlias(true);
-            return paint;
+            mGoogleApiClient.connect();
         }
 
 
 
-        @Override
-        public void onVisibilityChanged(boolean visible) {
-            Log.d(TAG, "onVisibilityChanged: " + visible);
-            super.onVisibilityChanged(visible);
-
-            if (visible) {
-                mGoogleApiClient.connect();
-
-                registerReceiver();
-
-                // Update time zone in case it changed while we weren't visible.
-                updateTimeZone(TimeZone.getDefault());
-
-
-            } else {
-                unregisterReceiver();
-
-                if (mGoogleApiClient != null && mGoogleApiClient.isConnected()) {
-                    Wearable.DataApi.removeListener(mGoogleApiClient, this);
-                    mGoogleApiClient.disconnect();
-                }
-            }
-
-            // Whether the timer should be running depends on whether we're visible (as well as
-            // whether we're in ambient mode), so we may need to start or stop the timer.
-            updateTimer();
-        }
-
-        private void registerReceiver() {
-            if (mRegisteredTimeZoneReceiver) {
-                return;
-            }
-            mRegisteredTimeZoneReceiver = true;
-            IntentFilter filter = new IntentFilter(Intent.ACTION_TIMEZONE_CHANGED);
-            WatchFace.this.registerReceiver(mTimeZoneReceiver, filter);
-        }
-
-        private void unregisterReceiver() {
-            if (!mRegisteredTimeZoneReceiver) {
-                return;
-            }
-            mRegisteredTimeZoneReceiver = false;
-            WatchFace.this.unregisterReceiver(mTimeZoneReceiver);
-        }
-
-
-
-        @Override
-        public void onPropertiesChanged(Bundle properties) {
-            super.onPropertiesChanged(properties);
-
-            boolean burnInProtection = properties.getBoolean(PROPERTY_BURN_IN_PROTECTION, false);
-
-            mIsLowBitAmbient = properties.getBoolean(PROPERTY_LOW_BIT_AMBIENT, false);
-
-            Log.d(TAG, "onPropertiesChanged: burn-in protection = " + burnInProtection
-                    + ", low-bit ambient = " + mIsLowBitAmbient);
-
-        }
-
-        @Override
-        public void onTimeTick() {
-            super.onTimeTick();
-            Log.d(TAG, "onTimeTick: ambient = " + isInAmbientMode());
-            invalidate();
-        }
-
-        @Override
-        public void onPeekCardPositionUpdate(Rect rect) {
-            super.onPeekCardPositionUpdate(rect);
-            Log.d(TAG, "onPeekCardPositionUpdate: " + rect);
-
-            cardPeekRectangle = rect;
-
-            invalidate();
-        }
 
 
         @Override
@@ -463,7 +420,7 @@ public class WatchFace extends CanvasWatchFaceService  {
 
             // When this property is set to true, the screen supports fewer bits for each color in
             // ambient mode. In this case, watch faces should disable anti-aliasing in ambient mode.
-            if (mIsLowBitAmbient) {
+            if (mLowBitAmbient) {
                 boolean antiAlias = !inAmbientMode;
                 mDatestampPaint.setAntiAlias(antiAlias);
                 mClockPaint.setAntiAlias(antiAlias);
@@ -474,6 +431,7 @@ public class WatchFace extends CanvasWatchFaceService  {
                 mWeatherPaint.setAntiAlias(antiAlias);
 
             }
+
             invalidate();
 
             // Whether the timer should be running depends on whether we're in ambient mode (as well
@@ -481,61 +439,19 @@ public class WatchFace extends CanvasWatchFaceService  {
             updateTimer();
         }
 
-        /**
-         * Captures tap event (and tap type) and toggles the background color if the user finishes
-         * a tap.
-         */
-        /*
-        @Override
-        public void onTapCommand(int tapType, int x, int y, long eventTime) {
-            switch (tapType) {
-                case TAP_TYPE_TOUCH:
-                    // The user has started touching the screen.
-                    break;
-                case TAP_TYPE_TOUCH_CANCEL:
-                    // The user has started a different gesture or otherwise cancelled the tap.
-                    break;
-                case TAP_TYPE_TAP:
-                    // The user has completed the tap gesture.
-                    // TODO: Add code to handle the tap gesture.
-                    Toast.makeText(getApplicationContext(), R.string.message, Toast.LENGTH_SHORT)
-                            .show();
-                    break;
-            }
-            invalidate();
-        }
-        */
-
-
         private void adjustPaintColorToCurrentMode(Paint paint, int interactiveColor,
                                                    int ambientColor) {
             paint.setColor(isInAmbientMode() ? ambientColor : interactiveColor);
         }
 
         @Override
-        public void onInterruptionFilterChanged(int interruptionFilter) {
-            Log.d(TAG, "onInterruptionFilterChanged: " + interruptionFilter);
-            super.onInterruptionFilterChanged(interruptionFilter);
-
-            boolean inMuteMode = interruptionFilter
-                    == android.support.wearable.watchface.WatchFaceService.INTERRUPTION_FILTER_NONE;
-
-            if (mIsMute != inMuteMode) {
-                mIsMute = inMuteMode;
-                invalidate();
-            }
-        }
-
-
-        @Override
         public void onDraw(Canvas canvas, Rect bounds) {
-
-            // where the magic happens...
+            Log.d(TAG, " onDraw");
             mDate.setTime(System.currentTimeMillis());
 
-            mXOffset = resources.getDimension(R.dimen.x_offset);
-            mYOffset = resources.getDimension(R.dimen.y_offset);
-            mPadding = resources.getDimension(R.dimen.padding);
+            mXOffset = 10;
+            mYOffset = 10;
+            mPadding = 5;
 
             mDatestampPaint.setTextAlign(Paint.Align.CENTER);
             mClockPaint.setTextAlign(Paint.Align.LEFT);
@@ -573,6 +489,12 @@ public class WatchFace extends CanvasWatchFaceService  {
 
 
 
+                Log.d(TAG, "Temp1: "+temp);
+                Log.d(TAG, "icon1: "+icon);
+                Log.d(TAG, "Weather1: "+weather);
+
+
+
             }
 
 
@@ -585,6 +507,10 @@ public class WatchFace extends CanvasWatchFaceService  {
             TempString = temp;
             WeatherString = weather;
 
+            Log.d(TAG, "Temp2: "+temp);
+            Log.d(TAG, "icon2: "+icon);
+            Log.d(TAG, "Weather2: "+weather);
+
             float xClock, yClock;
             float xClocknosecs, yClocknosecs;
             float xPeriod, yPeriod;
@@ -592,8 +518,6 @@ public class WatchFace extends CanvasWatchFaceService  {
             float xTimestamp, yTimestamp;
             float xTemp, yTemp;
             float xWeather, yWeather;
-
-
 
 
             xDatestamp = width / 2f;
@@ -634,7 +558,7 @@ public class WatchFace extends CanvasWatchFaceService  {
                         canvas.drawText(clocknosecsString, xClocknosecs, yClocknosecs, mClocknosecsPaint);
                     }
                 }
-                if (periodDim) {
+                if (markerDim) {
                     if (!DateFormat.is24HourFormat(getApplicationContext())) {
                         if (yPeriod < cardPeekRectangle.top) {
                             canvas.drawText(periodString, xPeriod, yPeriod, mPeriodPaint);
@@ -707,201 +631,203 @@ public class WatchFace extends CanvasWatchFaceService  {
 
             }
 
+
+
+
         }
 
 
-
-
-
-        // Starts the mUpdateTimeHandler timer if it should be running and isn't currently stops it
-        // if it shouldn't be running but currently is.
-        private void updateTimer() {
-            Log.d(TAG, "updateTimer");
+        @Override
+        public void onDestroy() {
+            Log.d(TAG, " Destroy");
             mUpdateTimeHandler.removeMessages(MSG_UPDATE_TIME);
-            if (shouldTimerBeRunning()) {
-                mUpdateTimeHandler.sendEmptyMessage(MSG_UPDATE_TIME);
-            }
+            super.onDestroy();
         }
 
-        // Returns whether the mUpdateTimeHandler timer should be running. The timer should only
-        // run when we're visible and in interactive mode.
-        private boolean shouldTimerBeRunning() {
+        @Override
+        public void onInterruptionFilterChanged(int interruptionFilter) {
+            super.onInterruptionFilterChanged(interruptionFilter);
+
+            Log.d(TAG, " onInterruptionFilterChanged: " + interruptionFilter);
+        }
+
+        @Override
+        public void onPropertiesChanged(Bundle properties) {
+            super.onPropertiesChanged(properties);
+            mLowBitAmbient = properties.getBoolean(WatchFaceService.PROPERTY_LOW_BIT_AMBIENT, false);
+
+            Log.d(TAG, " onPropertiesChanged: LowBitAmbient=" + mLowBitAmbient);
+        }
+
+        @Override
+        public void onTimeTick() {
+            super.onTimeTick();
+            Log.d(TAG, " TimeTick");
+            invalidate();
+            requireWeatherInfo();
+        }
+
+        @Override
+        public void onVisibilityChanged(boolean visible) {
+            super.onVisibilityChanged(visible);
+            Log.d(TAG, " onVisibilityChanged: " + visible);
+
+            if (visible) {
+                mGoogleApiClient.connect();
+                registerReceiver();
+
+                // Update time zone in case it changed while we weren't visible.
+                updateTimeZone(TimeZone.getDefault());
+                mDate.setTime(System.currentTimeMillis());
+            } else {
+                unregisterReceiver();
+                if (mGoogleApiClient != null && mGoogleApiClient.isConnected()) {
+                    Wearable.DataApi.removeListener(mGoogleApiClient, this);
+                    Wearable.NodeApi.removeListener(mGoogleApiClient, this);
+                    mGoogleApiClient.disconnect();
+                }
+            }
+
+            // Whether the timer should be running depends on whether we're visible (as well as
+            // whether we're in ambient mode), so we may need to start or stop the timer.
+            updateTimer();
+        }
+
+
+
+        protected boolean shouldUpdateTimerBeRunning() {
             return isVisible() && !isInAmbientMode();
         }
 
-        private void updateConfigDataItemAndUiOnStartup() {
-            WatchFaceUtil.fetchConfigDataMap(mGoogleApiClient,
-                    new WatchFaceUtil.FetchConfigDataMapCallback() {
-                        @Override
-                        public void onConfigDataMapFetched(DataMap startupConfig) {
-                            // use the newly received settings
-                            if (startupConfig != null && !startupConfig.isEmpty()) {
-                                updateUiForConfigDataMap(startupConfig);
-                            }
-                        }
-                    }
-            );
-        }
+        protected void fetchConfig(DataMap config) {
+            if (config.containsKey(Settings.KEY_WEATHER_UPDATE_TIME)) {
+                mWeatherInfoReceivedTime = config.getLong(Settings.KEY_WEATHER_UPDATE_TIME);
+            }
 
-        @Override
-        public void onDataChanged(DataEventBuffer dataEvents) {
-            try {
-                for (DataEvent dataEvent : dataEvents) {
-                    if (dataEvent.getType() != DataEvent.TYPE_CHANGED) {
-                        continue;
-                    }
-
-                    DataItem dataItem = dataEvent.getDataItem();
-                    if (!dataItem.getUri().getPath().equals(WatchFaceUtil.PATH_WITH_FEATURE)) {
-                        continue;
-                    }
-
-                    DataMapItem dataMapItem = DataMapItem.fromDataItem(dataItem);
-                    DataMap config = dataMapItem.getDataMap();
-                    Log.d(TAG, "Config DataItem updated:" + config);
-                    if (config != null && !config.isEmpty()) {
-                        updateUiForConfigDataMap(config);
-                    }
+            if (config.containsKey(Settings.KEY_TEMP)) {
+                String gettemp = config.getString(Settings.KEY_TEMP);
+                if (TextUtils.isEmpty(gettemp)) {
+                    temp = "103";
+                } else {
+                    temp = gettemp;
                 }
-            } finally {
-                dataEvents.close();
-            }
-        }
-
-        private void updateUiForConfigDataMap(final DataMap dataMap) {
-            Log.d(TAG, "updateUiForConfigDataMap: " + dataMap);
-
-            // font sizes
-            int clockSize = dataMap.getInt(WatchFaceUtil.KEY_CLOCK_SIZE, WatchFaceUtil.KEY_CLOCK_SIZE_DEF);
-            int clocknosecsSize = dataMap.getInt(WatchFaceUtil.KEY_CLOCK_NOSECS_SIZE, WatchFaceUtil.KEY_CLOCK_NOSECS_SIZE_DEF);
-            int periodSize = dataMap.getInt(WatchFaceUtil.KEY_MARKER_SIZE, WatchFaceUtil.KEY_MARKER_SIZE_DEF);
-            int dateSize = dataMap.getInt(WatchFaceUtil.KEY_DATE_SIZE, WatchFaceUtil.KEY_DATE_SIZE_DEF);
-            int timeSize = dataMap.getInt(WatchFaceUtil.KEY_TIME_SIZE, WatchFaceUtil.KEY_TIME_SIZE_DEF);
-            int tempSize = dataMap.getInt(WatchFaceUtil.KEY_TEMP_SIZE, WatchFaceUtil.KEY_TEMP_SIZE_DEF);
-            int weatherSize = dataMap.getInt(WatchFaceUtil.KEY_WEATHER_SIZE, WatchFaceUtil.KEY_WEATHER_SIZE_DEF);
-
-
-            // visibility flags
-            clockAct = dataMap.getBoolean(WatchFaceUtil.KEY_CLOCK_ACT, WatchFaceUtil.KEY_CLOCK_ACT_DEF);
-            clockDim = dataMap.getBoolean(WatchFaceUtil.KEY_CLOCK_DIM, WatchFaceUtil.KEY_CLOCK_DIM_DEF);
-            clocknosecsAct = dataMap.getBoolean(WatchFaceUtil.KEY_CLOCK_NOSECS_ACT, WatchFaceUtil.KEY_CLOCK_NOSECS_ACT_DEF);
-            clocknosecsDim = dataMap.getBoolean(WatchFaceUtil.KEY_CLOCK_NOSECS_DIM, WatchFaceUtil.KEY_CLOCK_NOSECS_DIM_DEF);
-            periodDim = dataMap.getBoolean(WatchFaceUtil.KEY_MARKER_DIM, WatchFaceUtil.KEY_MARKER_DIM_DEF);
-            dateDim = dataMap.getBoolean(WatchFaceUtil.KEY_DATE_DIM, WatchFaceUtil.KEY_DATE_DIM_DEF);
-            timeDim = dataMap.getBoolean(WatchFaceUtil.KEY_TIME_DIM, WatchFaceUtil.KEY_TIME_DIM_DEF);
-            tempDim = dataMap.getBoolean(WatchFaceUtil.KEY_TEMP_DIM, WatchFaceUtil.KEY_TEMP_DIM_DEF);
-            weatherDim = dataMap.getBoolean(WatchFaceUtil.KEY_WEATHER_DIM, WatchFaceUtil.KEY_WEATHER_DIM_DEF);
-
-            alwaysUtc = dataMap.getBoolean(WatchFaceUtil.KEY_ALWAYS_UTC, WatchFaceUtil.KEY_ALWAYS_UTC_DEF);
-            showtime = dataMap.getBoolean(WatchFaceUtil.KEY_SHOW_TIME, WatchFaceUtil.KEY_SHOW_TIME_DEF);
-            northernhemi = dataMap.getBoolean(WatchFaceUtil.KEY_NORTHERNHEMI, WatchFaceUtil.KEY_NORTHERNHEMI_DEF);
-
-            //gps stuff
-            lat = dataMap.getString(WatchFaceUtil.KEY_LAT, WatchFaceUtil.KEY_LAT_DEF);
-            lon = dataMap.getString(WatchFaceUtil.KEY_LON, WatchFaceUtil.KEY_LON_DEF);
-
-            //weather stuff
-            temp = dataMap.getString(WatchFaceUtil.KEY_TEMP, WatchFaceUtil.KEY_TEMP_DEF);
-            icon = dataMap.getString(WatchFaceUtil.KEY_ICON, WatchFaceUtil.KEY_ICON_DEF);
-            weather = dataMap.getString(WatchFaceUtil.KEY_WEATHER, WatchFaceUtil.KEY_WEATHER_DEF);
-            Log.i(TAG, "configupdate... Weather: Temp: " + temp + " icon: " + icon + " Weather: " + weather + " EOF...");
-
-            // notification card style
-            boolean useShortCards = dataMap.getBoolean(WatchFaceUtil.KEY_USE_SHORT_CARDS, WatchFaceUtil.KEY_USE_SHORT_CARDS_DEF);
-
-            // update the style accordingly
-            if (useShortCards) {
-                Log.d(TAG, "Using short notification cards");
-                setWatchFaceStyle(shortCards);
-            } else {
-                Log.d(TAG, "Using variable notification cards");
-                setWatchFaceStyle(variableCards);
             }
 
-            // set the text sizes scaled according to the screen density
-            float density = getResources().getDisplayMetrics().density;
-            mDatestampPaint.setTextSize(dateSize * density);
-            mClockPaint.setTextSize(clockSize * density);
-            mClocknosecsPaint.setTextSize(clocknosecsSize * density);
-            mPeriodPaint.setTextSize(periodSize * density);
-            mTimestampPaint.setTextSize(timeSize * density);
-            mTempPaint.setTextSize(tempSize * density);
-            mWeatherPaint.setTextSize(weatherSize * density);
-
-            // show the timestamp in UTC timezone if appropriate
-            if (alwaysUtc) {
-                timeStampSdf.setTimeZone(new SimpleTimeZone(0, "UTC"));
-            } else {
-                timeStampSdf.setTimeZone(TimeZone.getDefault());
+            if (config.containsKey(Settings.KEY_ICON)) {
+                String geticon = config.getString(Settings.KEY_ICON);
+                if (TextUtils.isEmpty(geticon)) {
+                    icon = "unknown";
+                } else {
+                    icon = geticon;
+                }
             }
 
-            ///need to update weather///
-            TempString = temp;
-            WeatherString = weather;
+            if (config.containsKey(Settings.KEY_WEATHER)) {
+                String getweather = config.getString(Settings.KEY_WEATHER);
+                if (TextUtils.isEmpty(getweather)) {
+                    weather = "unknown";
+                } else {
+                    weather = getweather;
+                }
+            }
 
-            // redraw the canvas
+            Log.d(TAG, "fetchConfig temp: "+temp);
+            Log.d(TAG, "fetchConfig icon: "+icon);
+            Log.d(TAG, "fetchConfig weather: "+weather);
+
             invalidate();
-
-            // persist these values for the next time the watch face is instantiated
-            saveConfigValues(clockSize, clocknosecsSize, periodSize, dateSize, timeSize, useShortCards, tempSize, weatherSize);
-
-            Log.i(TAG, "end of onDataChanged... Weather: Temp: " + temp + " icon: " + icon + " Weather: " + weather + " EOF...");
-
-
         }
 
-        private void saveConfigValues(int clockSize, int clocknosecsSize, int periodSize, int dateSize, int timeSize, boolean useShortCards, int tempSize, int weatherSize) {
-            Log.d(TAG, "saveConfigValues");
+        protected void getConfig() {
+            Log.d(TAG, " Start getting Config");
+            Wearable.NodeApi.getLocalNode(mGoogleApiClient).setResultCallback(new ResultCallback<NodeApi.GetLocalNodeResult>() {
+                @Override
+                public void onResult(NodeApi.GetLocalNodeResult getLocalNodeResult) {
+                    Uri uri = new Uri.Builder()
+                            .scheme("wear")
+                            .path(Settings.PATH_CONFIG)
+                            .authority(getLocalNodeResult.getNode().getId())
+                            .build();
 
-            Context context = getApplicationContext();
+                    getConfig(uri);
 
-            WatchFaceUtil.setInt(context, WatchFaceUtil.KEY_CLOCK_SIZE, clockSize);
-            WatchFaceUtil.setInt(context, WatchFaceUtil.KEY_CLOCK_NOSECS_SIZE, clocknosecsSize);
-            WatchFaceUtil.setInt(context, WatchFaceUtil.KEY_MARKER_SIZE, periodSize);
-            WatchFaceUtil.setInt(context, WatchFaceUtil.KEY_DATE_SIZE, dateSize);
-            WatchFaceUtil.setInt(context, WatchFaceUtil.KEY_TIME_SIZE, timeSize);
-            WatchFaceUtil.setInt(context, WatchFaceUtil.KEY_TEMP_SIZE, tempSize);
-            WatchFaceUtil.setInt(context, WatchFaceUtil.KEY_WEATHER_SIZE, weatherSize);
-            WatchFaceUtil.setBoolean(context, WatchFaceUtil.KEY_CLOCK_ACT, clockAct);
-            WatchFaceUtil.setBoolean(context, WatchFaceUtil.KEY_CLOCK_DIM, clockDim);
-            WatchFaceUtil.setBoolean(context, WatchFaceUtil.KEY_CLOCK_NOSECS_ACT, clocknosecsAct);
-            WatchFaceUtil.setBoolean(context, WatchFaceUtil.KEY_CLOCK_NOSECS_DIM, clocknosecsDim);
-            WatchFaceUtil.setBoolean(context, WatchFaceUtil.KEY_MARKER_DIM, periodDim);
-            WatchFaceUtil.setBoolean(context, WatchFaceUtil.KEY_DATE_DIM, dateDim);
-            WatchFaceUtil.setBoolean(context, WatchFaceUtil.KEY_TIME_DIM, timeDim);
-            WatchFaceUtil.setBoolean(context, WatchFaceUtil.KEY_TEMP_DIM, tempDim);
-            WatchFaceUtil.setBoolean(context, WatchFaceUtil.KEY_WEATHER_DIM, weatherDim);
-            WatchFaceUtil.setBoolean(context, WatchFaceUtil.KEY_ALWAYS_UTC, alwaysUtc);
-            WatchFaceUtil.setBoolean(context, WatchFaceUtil.KEY_SHOW_TIME, showtime);
-            WatchFaceUtil.setBoolean(context, WatchFaceUtil.KEY_NORTHERNHEMI, northernhemi);
-            WatchFaceUtil.setBoolean(context, WatchFaceUtil.KEY_USE_SHORT_CARDS, useShortCards);
-
+                }
+            });
         }
 
-        @Override
-        public void onConnected(Bundle connectionHint) {
-            Log.d(TAG, "onConnected: " + connectionHint);
-            Wearable.DataApi.addListener(mGoogleApiClient, Engine.this);
-            updateConfigDataItemAndUiOnStartup();
+        protected void getConfig(Uri uri) {
 
+            Wearable.DataApi.getDataItem(mGoogleApiClient, uri)
+                    .setResultCallback(
+                            new ResultCallback<DataApi.DataItemResult>() {
+                                @Override
+                                public void onResult(DataApi.DataItemResult dataItemResult) {
+                                    Log.d(TAG, " Finish Config: " + dataItemResult.getStatus());
+                                    if (dataItemResult.getStatus().isSuccess() && dataItemResult.getDataItem() != null) {
+                                        fetchConfig(DataMapItem.fromDataItem(dataItemResult.getDataItem()).getDataMap());
+                                    }
+                                }
+                            }
+                    );
         }
 
-        @Override
-        public void onConnectionSuspended(int cause) {
-            Log.d(TAG, "onConnectionSuspended: " + cause);
+        private void registerReceiver() {
+            if (mTimeZoneReceiver) {
+                return;
+            }
+            mTimeZoneReceiver = true;
+            IntentFilter filter = new IntentFilter(Intent.ACTION_TIMEZONE_CHANGED);
+            WatchFace.this.registerReceiver(TimeZoneReceiver, filter);
         }
 
-        @Override
-        public void onConnectionFailed(ConnectionResult result) {
-            Log.d(TAG, "onConnectionFailed: " + result);
+        private void unregisterReceiver() {
+            if (!mTimeZoneReceiver) {
+                return;
+            }
+            mTimeZoneReceiver = false;
+            WatchFace.this.unregisterReceiver(TimeZoneReceiver);
         }
 
+        protected void requireWeatherInfo() {
+            if (!mGoogleApiClient.isConnected())
+                return;
 
+            long timeMs = System.currentTimeMillis();
 
+            // The weather info is still up to date.
+            if ((timeMs - mWeatherInfoReceivedTime) <= mRequireInterval)
+                return;
 
+            // Try once in a min.
+            if ((timeMs - mWeatherInfoRequiredTime) <= DateUtils.MINUTE_IN_MILLIS)
+                return;
 
+            mWeatherInfoRequiredTime = timeMs;
+            Wearable.MessageApi.sendMessage(mGoogleApiClient, "", Settings.PATH_WEATHER_REQUIRE, null)
+                    .setResultCallback(new ResultCallback<MessageApi.SendMessageResult>() {
+                        @Override
+                        public void onResult(MessageApi.SendMessageResult sendMessageResult) {
+                            Log.d(TAG, " SendRequireMessage:" + sendMessageResult.getStatus());
+                        }
+                    });
+        }
 
+        protected void unregisterTimeZoneService() {
+            if (!mRegisteredService) {
+                return;
+            }
+            mRegisteredService = false;
 
+            //TimeZone
+            WatchFace.this.unregisterReceiver(TimeZoneReceiver);
+        }
+
+        protected void updateTimer() {
+            mUpdateTimeHandler.removeMessages(MSG_UPDATE_TIME);
+            if (shouldUpdateTimerBeRunning()) {
+                mUpdateTimeHandler.sendEmptyMessage(MSG_UPDATE_TIME);
+            }
+        }
 
 
         /////moon stuff/////
@@ -909,8 +835,7 @@ public class WatchFace extends CanvasWatchFaceService  {
             Resources resources = WatchFace.this.getResources();
             Bitmap mMoonBitmap;
             Bitmap mMoonResizedBitmap;
-            northernhemi = WatchFaceUtil.getBoolean(getApplicationContext(), WatchFaceUtil.KEY_NORTHERNHEMI,
-                    WatchFaceUtil.KEY_NORTHERNHEMI_DEF);
+            northernhemi = Settings.getBoolean(getApplicationContext(), Settings.KEY_NORTHERNHEMI, northernhemi);
 
             double phase = computeMoonPhase();
             Log.i(TAG, "Computed moon phase: " + phase);
@@ -1026,7 +951,7 @@ public class WatchFace extends CanvasWatchFaceService  {
 ////  end of moon stuff /////
 
 
-////weather stuff
+        ////weather stuff
         public void weathericon(Canvas canvas) {
             Resources resources = WatchFace.this.getResources();
             Bitmap mIconBitmap;
@@ -1042,12 +967,7 @@ public class WatchFace extends CanvasWatchFaceService  {
 
         }
 
-///end of weather stuff///
-
-
-
 
     }
-
-
 }
+

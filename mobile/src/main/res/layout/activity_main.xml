@@ -4,7 +4,7 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:textColor="@color/aqua"
-        tools:context=".MainActivity">
+        tools:context=".Main">
     <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -309,7 +309,6 @@
                 android:layout_height="wrap_content"
                 android:layout_gravity="center"
                 android:layout_marginBottom="12dp"
-                android:onClick="getweather"
                 android:text="@string/getweather" />
         </LinearLayout>
 
@@ -320,23 +319,14 @@
             android:layout_gravity="center"
             android:orientation="horizontal">
             <Button
-                android:id="@+id/startservice"
+                android:id="@+id/refreshweather"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_gravity="center"
                 android:layout_marginBottom="12dp"
-                android:onClick="StartService"
-                android:text="@string/startservice" />
+                android:text="@string/refreshweather" />
 
 
-            <Button
-                android:id="@+id/stopservice"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_gravity="center"
-                android:layout_marginBottom="12dp"
-                android:onClick="StopService"
-                android:text="@string/stopservice" />
 
         </LinearLayout>
 
@@ -442,7 +432,6 @@
                 android:layout_height="wrap_content"
                 android:layout_gravity="center"
                 android:layout_marginBottom="12dp"
-                android:onClick="visitnws"
                 android:text="@string/visitnws" />
         </LinearLayout>
     </LinearLayout>

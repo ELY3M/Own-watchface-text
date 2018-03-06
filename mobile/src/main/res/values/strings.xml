@@ -22,8 +22,7 @@
     <string name="apply">Apply Changes</string>
     <string name="reset">Reset to Default</string>
     <string name="getweather">Get Weather</string>
-    <string name="startservice">Start Service</string>
-    <string name="stopservice">Stop Service</string>
+    <string name="refreshweather">Refresh Weather</string>
     <string name="visitnws">Visit NWS Forecast page</string>
 	
 </resources>
