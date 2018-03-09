@@ -201,7 +201,8 @@ public class WatchFace extends CanvasWatchFaceService  {
         private static final String TIME_FORMAT_24 = "H:mm:ss";
         private static final String PERIOD_FORMAT = "a";
         private static final String DATESTAMP_FORMAT = "EEE MMM, dd yyyy";
-        private static final String TIMESTAMP_FORMAT = "HH:mm:ss Z";
+        private static final String TIMESTAMP_FORMAT = "HH:mm:ss zzz";
+        private static final String TIMEZONE_FORMAT = "zzz";
 
 
         private static final double MOON_PHASE_LENGTH = 29.530588853;
@@ -333,6 +334,7 @@ public class WatchFace extends CanvasWatchFaceService  {
                     .setHotwordIndicatorGravity(Gravity.BOTTOM | Gravity.RIGHT)
                     .setStatusBarGravity(Gravity.BOTTOM | Gravity.LEFT)
                     .setShowSystemUiTime(false)
+                    .setAcceptsTapEvents(true)
                     .build());
 
 /* from my fav watch face
@@ -440,6 +442,26 @@ public class WatchFace extends CanvasWatchFaceService  {
         }
 
 
+        @Override
+        public void onTapCommand(int tapType, int x, int y, long eventTime) {
+            Log.d(TAG, "onTapCommand tapType: "+tapType+ "x: "+x+"y: "+y+"eventTime: "+eventTime);
+            switch(tapType) {
+                case TAP_TYPE_TAP:
+                    // toggle UTC display
+                    if(!showtime) {
+                        Log.d(TAG, "Tap showtime is true");
+                        showtime = true;
+                    } else {
+                        Log.d(TAG, "Tap showtime is false");
+                        showtime = false;
+                    }
+                    invalidate();
+                    break;
+                default:
+                    super.onTapCommand(tapType, x, y, eventTime);
+                    break;
+            }
+        }
 
 
 
@@ -700,6 +722,7 @@ public class WatchFace extends CanvasWatchFaceService  {
             getConfig();
         }
 
+
         @Override
         public void onVisibilityChanged(boolean visible) {
             super.onVisibilityChanged(visible);
@@ -856,7 +879,7 @@ public class WatchFace extends CanvasWatchFaceService  {
                             new ResultCallback<DataApi.DataItemResult>() {
                                 @Override
                                 public void onResult(DataApi.DataItemResult dataItemResult) {
-                                    Log.d(TAG, " Finish Config: " + dataItemResult.getStatus());
+                                    Log.d(TAG, "Finish Weather: " + dataItemResult.getStatus());
                                     if (dataItemResult.getStatus().isSuccess() && dataItemResult.getDataItem() != null) {
                                         fetchWeather(DataMapItem.fromDataItem(dataItemResult.getDataItem()).getDataMap());
                                     }
@@ -872,7 +895,7 @@ public class WatchFace extends CanvasWatchFaceService  {
                             new ResultCallback<DataApi.DataItemResult>() {
                                 @Override
                                 public void onResult(DataApi.DataItemResult dataItemResult) {
-                                    Log.d(TAG, " Finish Config: " + dataItemResult.getStatus());
+                                    Log.d(TAG, "Finish Config: " + dataItemResult.getStatus());
                                     if (dataItemResult.getStatus().isSuccess() && dataItemResult.getDataItem() != null) {
                                         fetchConfig(DataMapItem.fromDataItem(dataItemResult.getDataItem()).getDataMap());
                                     }
