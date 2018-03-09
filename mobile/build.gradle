@@ -2,10 +2,10 @@ apply plugin: 'com.android.application'
 
 android {
     compileSdkVersion 21
-    buildToolsVersion '25.0.0'
+    buildToolsVersion '25.0.3'
     defaultConfig {
         applicationId "own.ownwatchfacetext"
-        minSdkVersion 18
+        minSdkVersion 19
         targetSdkVersion 21
         versionCode 1
         versionName "1.0"

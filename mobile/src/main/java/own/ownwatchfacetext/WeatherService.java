@@ -33,7 +33,7 @@ public class WeatherService extends WearableListenerService
 
 
 
-	private static final String TAG  = "ownwatchface";
+	private static final String TAG  = "ownwatchface wxservice";
 
 	private GoogleApiClient mGoogleApiClient;
 	private LocationManager mLocationManager;
@@ -231,7 +231,7 @@ public class WeatherService extends WearableListenerService
 						                   @Override
 						                   public void onResult( MessageApi.SendMessageResult sendMessageResult )
 						                   {
-							                   Log.d( TAG, "SendUpdateMessage: " + sendMessageResult.getStatus() );
+							                   Log.d( TAG, "SendUpdateWeather: " + sendMessageResult.getStatus() );
 						                   }
 					                   }
 				                   );

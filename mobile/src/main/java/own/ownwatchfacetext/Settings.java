@@ -6,7 +6,7 @@ import android.preference.PreferenceManager;
 
 public class Settings {
     public static final String TAG = "ownwatchface";
-    //public static final int interval = 90000;
+    public static final int gpsinterval = 60000;
     public static final int interval = 1800000;
     public static final String KEY_CLOCK_SIZE = "clock_size";
     public static final String KEY_CLOCK_ACT = "clock_act";
@@ -36,7 +36,7 @@ public class Settings {
     public static final String PATH_CONFIG = "/WeatherWatchFace/Config/";
     public static final String PATH_WEATHER_INFO = "/WeatherWatchFace/WeatherInfo";
     public static final String PATH_WEATHER_REQUIRE = "/WeatherService/Require";
-    public static final String PATH_WITH_FEATURE = "/OwnWatchFaceNWSTEXT";
+
 
 
     public static String getString(final Context context, final String key, final String defaultValue) {

@@ -2,12 +2,24 @@ package own.ownwatchfacetext;
 
 import android.content.Context;
 import android.content.SharedPreferences;
+import android.net.Uri;
 import android.preference.PreferenceManager;
+import android.support.annotation.NonNull;
+import android.util.Log;
+
+import com.google.android.gms.common.api.GoogleApiClient;
+import com.google.android.gms.common.api.ResultCallback;
+import com.google.android.gms.wearable.DataApi;
+import com.google.android.gms.wearable.DataItem;
+import com.google.android.gms.wearable.DataMap;
+import com.google.android.gms.wearable.DataMapItem;
+import com.google.android.gms.wearable.NodeApi;
+import com.google.android.gms.wearable.PutDataMapRequest;
+import com.google.android.gms.wearable.Wearable;
 
 public class Settings {
     public static final String TAG = "ownwatchface";
-    //public static final int interval = 90000;
-    public static final int interval = 1800000;
+    public static final int weatherinterval = 1800000;
     public static final String KEY_CLOCK_SIZE = "clock_size";
     public static final String KEY_CLOCK_ACT = "clock_act";
     public static final String KEY_CLOCK_DIM = "clock_dim";
@@ -36,7 +48,6 @@ public class Settings {
     public static final String PATH_CONFIG = "/WeatherWatchFace/Config/";
     public static final String PATH_WEATHER_INFO = "/WeatherWatchFace/WeatherInfo";
     public static final String PATH_WEATHER_REQUIRE = "/WeatherService/Require";
-    public static final String PATH_WITH_FEATURE = "/OwnWatchFaceNWSTEXT";
 
 
     public static String getString(final Context context, final String key, final String defaultValue) {
@@ -75,5 +86,107 @@ public class Settings {
 
 
 
+
+    public static void resetAllPrefs(final Context context) {
+        final SharedPreferences settings = PreferenceManager.getDefaultSharedPreferences(context);
+        final SharedPreferences.Editor editor = settings.edit();
+
+        editor.clear();
+        editor.apply();
+    }
+
+    // Callback interface to perform an action with the current config DataMap
+    public interface FetchConfigDataMapCallback {
+
+        // Callback invoked with the current config DataMap
+        void onConfigDataMapFetched(DataMap config);
+    }
+
+    // Asynchronously fetches the current config DataMap and passes it to the given callback. If
+    // the current config DataItem doesn't exist, it isn't created and the callback receives an
+    // empty DataMap.
+    public static void fetchConfigDataMap(final GoogleApiClient client,
+                                          final FetchConfigDataMapCallback callback) {
+        Wearable.NodeApi.getLocalNode(client).setResultCallback(
+                new ResultCallback<NodeApi.GetLocalNodeResult>() {
+                    @Override
+                    public void onResult(@NonNull NodeApi.GetLocalNodeResult getLocalNodeResult) {
+                        String localNode = getLocalNodeResult.getNode().getId();
+                        Uri uri = new Uri.Builder()
+                                .scheme("wear")
+                                .path(Settings.PATH_CONFIG)
+                                .authority(localNode)
+                                .build();
+                        Wearable.DataApi.getDataItem(client, uri)
+                                .setResultCallback(new DataItemResultCallback(callback));
+                    }
+                }
+        );
+    }
+
+    // Overwrites (or sets, if not present) the keys in the current config DataItem with the ones
+    // appearing in the given DataMap. If the config DataItem doesn't exist, it's created. It is
+    // allowed that only some of the keys used in the config DataItem appear in
+    // configKeysToOverwrite. The rest of the keys remains unmodified in this case.
+    public static void overwriteKeysInConfigDataMap(final GoogleApiClient googleApiClient,
+                                                    final DataMap configKeysToOverwrite) {
+
+        Settings.fetchConfigDataMap(googleApiClient,
+                new FetchConfigDataMapCallback() {
+                    @Override
+                    public void onConfigDataMapFetched(DataMap currentConfig) {
+                        DataMap overwrittenConfig = new DataMap();
+                        overwrittenConfig.putAll(currentConfig);
+                        overwrittenConfig.putAll(configKeysToOverwrite);
+                        Settings.putConfigDataItem(googleApiClient, overwrittenConfig);
+                    }
+                }
+        );
+    }
+
+
+    // Overwrites the current config DataItem's DataMap with newConfig. If the config DataItem
+    // doesn't exist, it's created.
+    public static void putConfigDataItem(GoogleApiClient googleApiClient, DataMap newConfig) {
+        PutDataMapRequest putDataMapRequest = PutDataMapRequest.create(PATH_CONFIG);
+        DataMap configToPut = putDataMapRequest.getDataMap();
+        configToPut.putAll(newConfig);
+        Wearable.DataApi.putDataItem(googleApiClient, putDataMapRequest.asPutDataRequest())
+                .setResultCallback(new ResultCallback<DataApi.DataItemResult>() {
+                    @Override
+                    public void onResult(@NonNull DataApi.DataItemResult dataItemResult) {
+                        if (Log.isLoggable(TAG, Log.DEBUG)) {
+                            Log.d(TAG, "putDataItem result status: " + dataItemResult.getStatus());
+                        }
+                    }
+                });
+    }
+
+    private static class DataItemResultCallback implements ResultCallback<DataApi.DataItemResult> {
+
+        private final FetchConfigDataMapCallback mCallback;
+
+        public DataItemResultCallback(FetchConfigDataMapCallback callback) {
+            mCallback = callback;
+        }
+
+        @Override
+        public void onResult(@NonNull DataApi.DataItemResult dataItemResult) {
+            if (dataItemResult.getStatus().isSuccess()) {
+                if (dataItemResult.getDataItem() != null) {
+                    DataItem configDataItem = dataItemResult.getDataItem();
+                    DataMapItem dataMapItem = DataMapItem.fromDataItem(configDataItem);
+                    DataMap config = dataMapItem.getDataMap();
+                    mCallback.onConfigDataMapFetched(config);
+                } else {
+                    mCallback.onConfigDataMapFetched(new DataMap());
+                }
+            }
+        }
+    }
+
+    private Settings() {
+        // static class
+    }
 
 }

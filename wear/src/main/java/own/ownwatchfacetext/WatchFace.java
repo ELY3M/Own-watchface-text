@@ -36,6 +36,7 @@ import com.google.android.gms.common.api.ResultCallback;
 import com.google.android.gms.wearable.DataApi;
 import com.google.android.gms.wearable.DataEvent;
 import com.google.android.gms.wearable.DataEventBuffer;
+import com.google.android.gms.wearable.DataItem;
 import com.google.android.gms.wearable.DataMap;
 import com.google.android.gms.wearable.DataMapItem;
 import com.google.android.gms.wearable.MessageApi;
@@ -53,7 +54,7 @@ import java.util.TimeZone;
 
 public class WatchFace extends CanvasWatchFaceService  {
 
-    private static final String TAG = "ownwatchface";
+    private static final String TAG = "ownwatchface watchface";
 
     @Override
     public Engine onCreateEngine() {
@@ -134,8 +135,6 @@ public class WatchFace extends CanvasWatchFaceService  {
         boolean mLowBitAmbient;
         boolean mRegisteredService = false;
 
-        int mRequireInterval;
-
 
         String lat = "0.0";
         String lon = "0.0";
@@ -178,7 +177,8 @@ public class WatchFace extends CanvasWatchFaceService  {
 
         protected long mWeatherInfoReceivedTime;
         protected long mWeatherInfoRequiredTime;
-        private String mName;
+        int mWeatherRequireInterval;
+
 
 
 
@@ -220,7 +220,8 @@ public class WatchFace extends CanvasWatchFaceService  {
 
         @Override
         public void onConnected(Bundle bundle) {
-            Log.d(TAG, " Connected: " + bundle);
+            Log.d(TAG, "Connected: " + bundle);
+            getWeather();
             getConfig();
             Wearable.NodeApi.addListener(mGoogleApiClient, this);
             Wearable.DataApi.addListener(mGoogleApiClient, this);
@@ -232,20 +233,57 @@ public class WatchFace extends CanvasWatchFaceService  {
             Log.d(TAG, " ConnectionSuspended: " + i);
         }
 
+/*
         @Override
         public void onDataChanged(DataEventBuffer dataEvents) {
+            Log.d(TAG, "onDataChanged");
+            try {
+                for (DataEvent dataEvent : dataEvents) {
+                    if (dataEvent.getType() != DataEvent.TYPE_CHANGED) {
+                        continue;
+                    }
+
+                    DataItem dataItem = dataEvent.getDataItem();
+                    if (!dataItem.getUri().getPath().equals(Settings.PATH_CONFIG)) {
+                        continue;
+                    }
+                    if (!dataItem.getUri().getPath().equals(Settings.PATH_WEATHER_INFO)) {
+                        continue;
+                    }
+
+                    DataMapItem dataMapItem = DataMapItem.fromDataItem(dataItem);
+                    DataMap config = dataMapItem.getDataMap();
+                    Log.d(TAG, "Config DataItem updated:" + config);
+                    if (config != null && !config.isEmpty()) {
+                        //updateUiForConfigDataMap(config);
+                        fetchWeather(config);
+                        fetchConfig(config);
+                    }
+                }
+            } finally {
+                dataEvents.close();
+            }
+        }
+        */
+
+
+        @Override
+        public void onDataChanged(DataEventBuffer dataEvents) {
+                Log.d(TAG, "onDataChanged");
             for (int i = 0; i < dataEvents.getCount(); i++) {
                 DataEvent event = dataEvents.get(i);
                 DataMap dataMap = DataMap.fromByteArray(event.getDataItem().getData());
-                Log.d(TAG, " onDataChanged: " + dataMap);
+                Log.d(TAG, "onDataChanged: " + dataMap);
 
+                fetchWeather(dataMap);
                 fetchConfig(dataMap);
             }
+
         }
 
         @Override
         public void onPeerConnected(Node node) {
-            Log.d(TAG, " PeerConnected: " + node);
+            Log.d(TAG, "PeerConnected: " + node);
             requireWeatherInfo();
         }
 
@@ -256,7 +294,7 @@ public class WatchFace extends CanvasWatchFaceService  {
 
         @Override
         public void onConnectionFailed(ConnectionResult connectionResult) {
-            Log.d(TAG, " ConnectionFailed: " + connectionResult);
+            Log.d(TAG, "ConnectionFailed: " + connectionResult);
 
         }
 
@@ -386,14 +424,17 @@ public class WatchFace extends CanvasWatchFaceService  {
             showtime = Settings.getBoolean(context, Settings.KEY_SHOW_TIME, showtime);
             northernhemi = Settings.getBoolean(context, Settings.KEY_NORTHERNHEMI, northernhemi);
 
+            Log.d(TAG, "clockSize: "+clockSize);
+            Log.d(TAG, "clocknosecsSize: "+clocknosecsSize);
 
+            Log.d(TAG, "showtime: "+showtime);
+            Log.d(TAG, "northernhemi: "+northernhemi);
 
             mDate = new Date();
 
-            //service timer!!!//
-            mRequireInterval = Settings.interval;
+            //weather service timer!!!//
+            mWeatherRequireInterval = Settings.weatherinterval;
             mWeatherInfoRequiredTime = System.currentTimeMillis() - (DateUtils.SECOND_IN_MILLIS * 58);
-
 
             mGoogleApiClient.connect();
         }
@@ -446,7 +487,7 @@ public class WatchFace extends CanvasWatchFaceService  {
 
         @Override
         public void onDraw(Canvas canvas, Rect bounds) {
-            Log.d(TAG, " onDraw");
+            Log.d(TAG, "onDraw");
             mDate.setTime(System.currentTimeMillis());
 
             mXOffset = 10;
@@ -483,15 +524,6 @@ public class WatchFace extends CanvasWatchFaceService  {
                 moonupdate(canvas);
                 //weather
                 weathericon(canvas);
-                //weather via wifi
-                //weatherupdate(canvas);
-                //new getweatherviajson().execute();
-
-
-
-                Log.d(TAG, "Temp1: "+temp);
-                Log.d(TAG, "icon1: "+icon);
-                Log.d(TAG, "Weather1: "+weather);
 
 
 
@@ -507,9 +539,9 @@ public class WatchFace extends CanvasWatchFaceService  {
             TempString = temp;
             WeatherString = weather;
 
-            Log.d(TAG, "Temp2: "+temp);
-            Log.d(TAG, "icon2: "+icon);
-            Log.d(TAG, "Weather2: "+weather);
+            Log.d(TAG, "onDraw Temp: "+temp);
+            Log.d(TAG, "onDraw icon: "+icon);
+            Log.d(TAG, "onDraw Weather: "+weather);
 
             float xClock, yClock;
             float xClocknosecs, yClocknosecs;
@@ -622,7 +654,7 @@ public class WatchFace extends CanvasWatchFaceService  {
                     canvas.drawText(WeatherString, xWeather, yWeather, mWeatherPaint);
                 }
 
-
+                Log.d(TAG,"onDraw showtime: "+showtime);
                 if (showtime) {
                     if (yTimestamp < cardPeekRectangle.top) {
                         canvas.drawText(timestampString, xTimestamp, yTimestamp, mTimestampPaint);
@@ -639,7 +671,7 @@ public class WatchFace extends CanvasWatchFaceService  {
 
         @Override
         public void onDestroy() {
-            Log.d(TAG, " Destroy");
+            Log.d(TAG, "Destroy");
             mUpdateTimeHandler.removeMessages(MSG_UPDATE_TIME);
             super.onDestroy();
         }
@@ -648,7 +680,7 @@ public class WatchFace extends CanvasWatchFaceService  {
         public void onInterruptionFilterChanged(int interruptionFilter) {
             super.onInterruptionFilterChanged(interruptionFilter);
 
-            Log.d(TAG, " onInterruptionFilterChanged: " + interruptionFilter);
+            Log.d(TAG, "onInterruptionFilterChanged: " + interruptionFilter);
         }
 
         @Override
@@ -656,21 +688,22 @@ public class WatchFace extends CanvasWatchFaceService  {
             super.onPropertiesChanged(properties);
             mLowBitAmbient = properties.getBoolean(WatchFaceService.PROPERTY_LOW_BIT_AMBIENT, false);
 
-            Log.d(TAG, " onPropertiesChanged: LowBitAmbient=" + mLowBitAmbient);
+            Log.d(TAG, "onPropertiesChanged: LowBitAmbient=" + mLowBitAmbient);
         }
 
         @Override
         public void onTimeTick() {
             super.onTimeTick();
-            Log.d(TAG, " TimeTick");
+            Log.d(TAG, "TimeTick");
             invalidate();
             requireWeatherInfo();
+            getConfig();
         }
 
         @Override
         public void onVisibilityChanged(boolean visible) {
             super.onVisibilityChanged(visible);
-            Log.d(TAG, " onVisibilityChanged: " + visible);
+            Log.d(TAG, "onVisibilityChanged: " + visible);
 
             if (visible) {
                 mGoogleApiClient.connect();
@@ -693,13 +726,58 @@ public class WatchFace extends CanvasWatchFaceService  {
             updateTimer();
         }
 
-
-
         protected boolean shouldUpdateTimerBeRunning() {
             return isVisible() && !isInAmbientMode();
         }
 
+
         protected void fetchConfig(DataMap config) {
+
+
+            Log.d(TAG, "fetchConfig(DataMap config)");
+
+            if (config.containsKey(Settings.KEY_CLOCK_SIZE)) {
+                clockSize = config.getInt(Settings.KEY_CLOCK_SIZE);
+                Log.d(TAG, "clockSize: "+clockSize);
+
+            }
+
+
+            if (config.containsKey(Settings.KEY_CLOCK_NOSECS_SIZE)) {
+                clocknosecsSize = config.getInt(Settings.KEY_CLOCK_NOSECS_SIZE);
+                Log.d(TAG, "clocknosecsSize: "+clocknosecsSize);
+
+            }
+
+
+
+            if (config.containsKey(Settings.KEY_SHOW_TIME)) {
+                showtime = config.getBoolean(Settings.KEY_SHOW_TIME);
+                Log.d(TAG, "showtime: "+showtime);
+
+            }
+            if (config.containsKey(Settings.KEY_NORTHERNHEMI)) {
+                showtime = config.getBoolean(Settings.KEY_NORTHERNHEMI);
+                Log.d(TAG, "northernhemi: "+northernhemi);
+
+            }
+
+
+            Log.d(TAG, "fetchConfig clockSize: "+clockSize);
+            Log.d(TAG, "fetchConfig clocknosecsSize: "+clocknosecsSize);
+
+            Log.d(TAG, "fetchConfig showtime: "+showtime);
+            Log.d(TAG, "fetchConfig northernhemi: "+northernhemi);
+
+
+            invalidate();
+        }
+
+
+        protected void fetchWeather(DataMap config) {
+
+            Log.d(TAG, "fetchWeather(DataMap config)");
+
             if (config.containsKey(Settings.KEY_WEATHER_UPDATE_TIME)) {
                 mWeatherInfoReceivedTime = config.getLong(Settings.KEY_WEATHER_UPDATE_TIME);
             }
@@ -731,15 +809,32 @@ public class WatchFace extends CanvasWatchFaceService  {
                 }
             }
 
-            Log.d(TAG, "fetchConfig temp: "+temp);
-            Log.d(TAG, "fetchConfig icon: "+icon);
-            Log.d(TAG, "fetchConfig weather: "+weather);
+            Log.d(TAG, "fetchWeather temp: "+temp);
+            Log.d(TAG, "fetchWeather icon: "+icon);
+            Log.d(TAG, "fetchWeather weather: "+weather);
 
             invalidate();
         }
 
+        protected void getWeather() {
+            Log.d(TAG, "Start getting Weather");
+            Wearable.NodeApi.getLocalNode(mGoogleApiClient).setResultCallback(new ResultCallback<NodeApi.GetLocalNodeResult>() {
+                @Override
+                public void onResult(NodeApi.GetLocalNodeResult getLocalNodeResult) {
+                    Uri uri = new Uri.Builder()
+                            .scheme("wear")
+                            .path(Settings.PATH_WEATHER_INFO)
+                            .authority(getLocalNodeResult.getNode().getId())
+                            .build();
+
+                    getWeather(uri);
+
+                }
+            });
+        }
+
         protected void getConfig() {
-            Log.d(TAG, " Start getting Config");
+            Log.d(TAG, "Start getting Config");
             Wearable.NodeApi.getLocalNode(mGoogleApiClient).setResultCallback(new ResultCallback<NodeApi.GetLocalNodeResult>() {
                 @Override
                 public void onResult(NodeApi.GetLocalNodeResult getLocalNodeResult) {
@@ -750,9 +845,24 @@ public class WatchFace extends CanvasWatchFaceService  {
                             .build();
 
                     getConfig(uri);
-
                 }
             });
+        }
+
+        protected void getWeather(Uri uri) {
+
+            Wearable.DataApi.getDataItem(mGoogleApiClient, uri)
+                    .setResultCallback(
+                            new ResultCallback<DataApi.DataItemResult>() {
+                                @Override
+                                public void onResult(DataApi.DataItemResult dataItemResult) {
+                                    Log.d(TAG, " Finish Config: " + dataItemResult.getStatus());
+                                    if (dataItemResult.getStatus().isSuccess() && dataItemResult.getDataItem() != null) {
+                                        fetchWeather(DataMapItem.fromDataItem(dataItemResult.getDataItem()).getDataMap());
+                                    }
+                                }
+                            }
+                    );
         }
 
         protected void getConfig(Uri uri) {
@@ -795,7 +905,7 @@ public class WatchFace extends CanvasWatchFaceService  {
             long timeMs = System.currentTimeMillis();
 
             // The weather info is still up to date.
-            if ((timeMs - mWeatherInfoReceivedTime) <= mRequireInterval)
+            if ((timeMs - mWeatherInfoReceivedTime) <= mWeatherRequireInterval)
                 return;
 
             // Try once in a min.
@@ -811,6 +921,8 @@ public class WatchFace extends CanvasWatchFaceService  {
                         }
                     });
         }
+
+
 
         protected void unregisterTimeZoneService() {
             if (!mRegisteredService) {
