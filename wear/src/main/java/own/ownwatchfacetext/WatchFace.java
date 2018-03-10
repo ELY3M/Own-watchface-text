@@ -158,6 +158,7 @@ public class WatchFace extends CanvasWatchFaceService  {
         public boolean clockDim = false;
         public boolean clocknosecsAct = false;
         public boolean clocknosecsDim = true;
+        public boolean markerAct = true;
         public boolean markerDim = true;
         public boolean dateDim = true;
         public boolean timeDim = false;
@@ -771,16 +772,94 @@ public class WatchFace extends CanvasWatchFaceService  {
                 Log.d(TAG, "clocknosecsSize: "+clocknosecsSize);
 
             }
+            if (config.containsKey(Settings.KEY_MARKER_SIZE)) {
+                markerSize = config.getInt(Settings.KEY_MARKER_SIZE);
+                Log.d(TAG, "markerSize: "+markerSize);
 
+            }
+            if (config.containsKey(Settings.KEY_DATE_SIZE)) {
+                dateSize = config.getInt(Settings.KEY_DATE_SIZE);
+                Log.d(TAG, "dateSize: "+dateSize);
 
+            }
+            if (config.containsKey(Settings.KEY_TIME_SIZE)) {
+                timeSize = config.getInt(Settings.KEY_TIME_SIZE);
+                Log.d(TAG, "timeSize: "+timeSize);
 
+            }
+            if (config.containsKey(Settings.KEY_TEMP_SIZE)) {
+                tempSize = config.getInt(Settings.KEY_TEMP_SIZE);
+                Log.d(TAG, "tempSize: "+tempSize);
+
+            }
+            if (config.containsKey(Settings.KEY_WEATHER_SIZE)) {
+                weatherSize = config.getInt(Settings.KEY_WEATHER_SIZE);
+                Log.d(TAG, "weatherSize: "+weatherSize);
+
+            }
+
+            if (config.containsKey(Settings.KEY_CLOCK_ACT)) {
+                clockAct = config.getBoolean(Settings.KEY_CLOCK_ACT);
+                Log.d(TAG, "clockAct: "+clockAct);
+
+            }
+            if (config.containsKey(Settings.KEY_CLOCK_DIM)) {
+                clockDim = config.getBoolean(Settings.KEY_CLOCK_DIM);
+                Log.d(TAG, "clockDim: "+clockDim);
+
+            }
+            if (config.containsKey(Settings.KEY_CLOCK_NOSECS_ACT)) {
+                clocknosecsAct = config.getBoolean(Settings.KEY_CLOCK_NOSECS_ACT);
+                Log.d(TAG, "clocknosecsAct: "+clocknosecsAct);
+
+            }
+            if (config.containsKey(Settings.KEY_CLOCK_NOSECS_DIM)) {
+                clocknosecsDim = config.getBoolean(Settings.KEY_CLOCK_NOSECS_DIM);
+                Log.d(TAG, "clocknosecsDim: "+clocknosecsDim);
+
+            }
+            if (config.containsKey(Settings.KEY_MARKER_ACT)) {
+                markerAct = config.getBoolean(Settings.KEY_MARKER_ACT);
+                Log.d(TAG, "markerAct: "+markerAct);
+
+            }
+            if (config.containsKey(Settings.KEY_MARKER_DIM)) {
+                markerDim = config.getBoolean(Settings.KEY_MARKER_DIM);
+                Log.d(TAG, "markerDim: "+markerDim);
+
+            }
+            if (config.containsKey(Settings.KEY_DATE_DIM)) {
+                dateDim = config.getBoolean(Settings.KEY_DATE_DIM);
+                Log.d(TAG, "dateDim: "+dateDim);
+
+            }
+            if (config.containsKey(Settings.KEY_TIME_DIM)) {
+                timeDim = config.getBoolean(Settings.KEY_TIME_DIM);
+                Log.d(TAG, "timeDim: "+timeDim);
+
+            }
+            if (config.containsKey(Settings.KEY_TEMP_DIM)) {
+                tempDim = config.getBoolean(Settings.KEY_TEMP_DIM);
+                Log.d(TAG, "tempDim: "+tempDim);
+
+            }
+            if (config.containsKey(Settings.KEY_WEATHER_DIM)) {
+                weatherDim = config.getBoolean(Settings.KEY_WEATHER_DIM);
+                Log.d(TAG, "weatherDim: "+weatherDim);
+
+            }
+            if (config.containsKey(Settings.KEY_ALWAYS_UTC)) {
+                alwaysUtc = config.getBoolean(Settings.KEY_ALWAYS_UTC);
+                Log.d(TAG, "alwaysUtc: "+alwaysUtc);
+
+            }
             if (config.containsKey(Settings.KEY_SHOW_TIME)) {
                 showtime = config.getBoolean(Settings.KEY_SHOW_TIME);
                 Log.d(TAG, "showtime: "+showtime);
 
             }
             if (config.containsKey(Settings.KEY_NORTHERNHEMI)) {
-                showtime = config.getBoolean(Settings.KEY_NORTHERNHEMI);
+                northernhemi = config.getBoolean(Settings.KEY_NORTHERNHEMI);
                 Log.d(TAG, "northernhemi: "+northernhemi);
 
             }
@@ -788,6 +867,13 @@ public class WatchFace extends CanvasWatchFaceService  {
 
             Log.d(TAG, "fetchConfig clockSize: "+clockSize);
             Log.d(TAG, "fetchConfig clocknosecsSize: "+clocknosecsSize);
+
+
+            Log.d(TAG, "fetchConfig clockAct: "+clockAct);
+            Log.d(TAG, "fetchConfig clockdim: "+clockDim);
+
+            Log.d(TAG, "fetchConfig markerAct: "+markerAct);
+            Log.d(TAG, "fetchConfig markerDim: "+markerDim);
 
             Log.d(TAG, "fetchConfig showtime: "+showtime);
             Log.d(TAG, "fetchConfig northernhemi: "+northernhemi);

@@ -88,6 +88,7 @@ public class Main extends Activity implements ConnectionCallbacks, OnConnectionF
     public boolean clockDim = false;
     public boolean clocknosecsAct = false;
     public boolean clocknosecsDim = true;
+    public boolean markerAct = true;
     public boolean markerDim = true;
     public boolean dateDim = true;
     public boolean timeDim = false;
@@ -108,7 +109,8 @@ public class Main extends Activity implements ConnectionCallbacks, OnConnectionF
     private CheckBox clockdimCheckBox;
     private CheckBox clocknosecsactCheckBox;
     private CheckBox clocknosecsdimCheckBox;
-    private CheckBox markerCheckBox;
+    private CheckBox markerActCheckBox;
+    private CheckBox markerDimCheckBox;
     private CheckBox dateCheckBox;
     private CheckBox timeCheckBox;
     private CheckBox tempCheckBox;
@@ -179,7 +181,8 @@ public class Main extends Activity implements ConnectionCallbacks, OnConnectionF
         clockdimCheckBox = (CheckBox) findViewById(R.id.clockdimCheckBox);
         clocknosecsactCheckBox = (CheckBox) findViewById(R.id.clocknosecsactCheckBox);
         clocknosecsdimCheckBox = (CheckBox) findViewById(R.id.clocknosecsdimCheckBox);
-        markerCheckBox = (CheckBox) findViewById(R.id.markerCheckBox);
+        markerActCheckBox = (CheckBox) findViewById(R.id.markerActCheckBox);
+        markerDimCheckBox = (CheckBox) findViewById(R.id.markerDimCheckBox);
         dateCheckBox = (CheckBox) findViewById(R.id.dateCheckBox);
         timeCheckBox = (CheckBox) findViewById(R.id.timeCheckBox);
         tempCheckBox = (CheckBox) findViewById(R.id.tempCheckBox);
@@ -333,7 +336,8 @@ public class Main extends Activity implements ConnectionCallbacks, OnConnectionF
         Settings.setBoolean(this, Settings.KEY_CLOCK_DIM, clockdimCheckBox.isChecked());
         Settings.setBoolean(this, Settings.KEY_CLOCK_NOSECS_ACT, clocknosecsactCheckBox.isChecked());
         Settings.setBoolean(this, Settings.KEY_CLOCK_NOSECS_DIM, clocknosecsdimCheckBox.isChecked());
-        Settings.setBoolean(this, Settings.KEY_MARKER_DIM, markerCheckBox.isChecked());
+        Settings.setBoolean(this, Settings.KEY_MARKER_ACT, markerActCheckBox.isChecked());
+        Settings.setBoolean(this, Settings.KEY_MARKER_DIM, markerDimCheckBox.isChecked());
         Settings.setBoolean(this, Settings.KEY_DATE_DIM, dateCheckBox.isChecked());
         Settings.setBoolean(this, Settings.KEY_TIME_DIM, timeCheckBox.isChecked());
         Settings.setBoolean(this, Settings.KEY_TEMP_DIM, tempCheckBox.isChecked());
@@ -364,7 +368,8 @@ public class Main extends Activity implements ConnectionCallbacks, OnConnectionF
         clockdimCheckBox.setChecked(Settings.getBoolean(this, Settings.KEY_CLOCK_DIM, clockDim));
         clocknosecsactCheckBox.setChecked(Settings.getBoolean(this, Settings.KEY_CLOCK_NOSECS_ACT, clocknosecsAct));
         clocknosecsdimCheckBox.setChecked(Settings.getBoolean(this, Settings.KEY_CLOCK_NOSECS_DIM, clocknosecsDim));
-        markerCheckBox.setChecked(Settings.getBoolean(this, Settings.KEY_MARKER_DIM, markerDim));
+        markerActCheckBox.setChecked(Settings.getBoolean(this, Settings.KEY_MARKER_ACT, markerAct));
+        markerDimCheckBox.setChecked(Settings.getBoolean(this, Settings.KEY_MARKER_DIM, markerDim));
         dateCheckBox.setChecked(Settings.getBoolean(this, Settings.KEY_DATE_DIM, dateDim));
         timeCheckBox.setChecked(Settings.getBoolean(this, Settings.KEY_TIME_DIM, timeDim));
         tempCheckBox.setChecked(Settings.getBoolean(this, Settings.KEY_TEMP_DIM, tempDim));
@@ -395,7 +400,8 @@ public class Main extends Activity implements ConnectionCallbacks, OnConnectionF
         clockDim = clockdimCheckBox.isChecked();
         clocknosecsAct = clocknosecsactCheckBox.isChecked();
         clocknosecsDim = clocknosecsdimCheckBox.isChecked();
-        markerDim = markerCheckBox.isChecked();
+        markerAct = markerActCheckBox.isChecked();
+        markerDim = markerDimCheckBox.isChecked();
         dateDim = dateCheckBox.isChecked();
         timeDim = timeCheckBox.isChecked();
         tempDim = tempCheckBox.isChecked();
@@ -416,6 +422,7 @@ public class Main extends Activity implements ConnectionCallbacks, OnConnectionF
         dataMap.putBoolean(Settings.KEY_CLOCK_DIM, clockDim);
         dataMap.putBoolean(Settings.KEY_CLOCK_NOSECS_ACT, clocknosecsAct);
         dataMap.putBoolean(Settings.KEY_CLOCK_NOSECS_DIM, clocknosecsDim);
+        dataMap.putBoolean(Settings.KEY_MARKER_ACT, markerAct);
         dataMap.putBoolean(Settings.KEY_MARKER_DIM, markerDim);
         dataMap.putBoolean(Settings.KEY_DATE_DIM, dateDim);
         dataMap.putBoolean(Settings.KEY_TIME_DIM, timeDim);

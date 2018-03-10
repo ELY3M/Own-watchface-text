@@ -114,11 +114,19 @@
                 android:text="18"/>
             <CheckBox
                 android:button="@drawable/cyancheck"
-                android:id="@+id/markerCheckBox"
+                android:id="@+id/markerActCheckBox"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textColor="@color/aqua"
+                android:text="@string/active"/>
+            <CheckBox
+                android:button="@drawable/cyancheck"
+                android:id="@+id/markerDimCheckBox"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:textColor="@color/aqua"
                 android:text="@string/ambient"/>
+
         </LinearLayout>
 
         <LinearLayout

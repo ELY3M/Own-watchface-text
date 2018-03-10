@@ -27,6 +27,7 @@ public class Settings {
     public static final String KEY_CLOCK_NOSECS_ACT = "clock_nosecs_act";
     public static final String KEY_CLOCK_NOSECS_DIM = "clock_nosecs_dim";
     public static final String KEY_MARKER_SIZE = "marker_size";
+    public static final String KEY_MARKER_ACT = "marker_act";
     public static final String KEY_MARKER_DIM = "marker_dim";
     public static final String KEY_DATE_SIZE = "date_size";
     public static final String KEY_DATE_DIM = "date_dim";
@@ -45,9 +46,9 @@ public class Settings {
     public static final String KEY_WEATHER_SIZE = "weather_size";
     public static final String KEY_WEATHER_DIM = "weather_dim";
     public static final String KEY_WEATHER_UPDATE_TIME = "Update_Time";
-    public static final String PATH_CONFIG = "/WeatherWatchFace/Config/";
-    public static final String PATH_WEATHER_INFO = "/WeatherWatchFace/WeatherInfo";
-    public static final String PATH_WEATHER_REQUIRE = "/WeatherService/Require";
+    public static final String PATH_CONFIG = "/ownwatchfacetext/Config/";
+    public static final String PATH_WEATHER_INFO = "/ownwatchfacetext/WeatherInfo";
+    public static final String PATH_WEATHER_REQUIRE = "/ownwatchfacetext/Require";
 
 
     public static String getString(final Context context, final String key, final String defaultValue) {
