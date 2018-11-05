@@ -491,8 +491,17 @@ public class Main extends Activity implements ConnectionCallbacks, OnConnectionF
                 while (geticon.find()) {
                     finalicon = geticon.group(1);
                 }
-                double finaltemp = Math.ceil(Double.valueOf(mytemp));
-                mytemp = String.valueOf((int) finaltemp) + "°F";
+
+                if(!mytemp.equals("NA"))
+                {
+                    double finaltemp = Math.ceil(Double.valueOf(mytemp));
+                    mytemp = finaltemp + "°F";
+                    Log.i(TAG, "got finaltemp: " + mytemp);
+                } else {
+                    mytemp = "NA°F";
+                    Log.i(TAG, "mytemp is NA: " + mytemp);
+
+                }
 
                 temp.setText(mytemp);
                 weather.setText(myweather);
@@ -520,7 +529,7 @@ public class Main extends Activity implements ConnectionCallbacks, OnConnectionF
                 String LogString = "Temp : " + mytemp + " Icon: " + myicon + " Weather: " + myweather + "\nLast Update: " + mytimestamp + "\nUpdate Count: " + updatecount;
                 Log.i(TAG, LogString);
                 try {
-                    FileWriter writer = new FileWriter("/sdcard/ownwatchtext-updates.txt", true);
+                    FileWriter writer = new FileWriter(Environment.getExternalStorageDirectory().getAbsolutePath() + "/ownwatchtext-updates.txt", true);
                     BufferedWriter bufferedWriter = new BufferedWriter(writer);
                     bufferedWriter.write(LogString);
                     bufferedWriter.newLine();
